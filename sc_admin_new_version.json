@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Service-Catalog AutoTerminate Setup",
+    "Description": "Service - Catalog AutoTerminate Setup",
     "Parameters": {
       "SCenduser": {
         "Default": "user/KiranSai",
