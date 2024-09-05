@@ -3,12 +3,12 @@
     "Description": "Service Catalog AutoTerminate Setup",
     "Parameters": {
       "SCenduser": {
-        "Default": "user/Star1",
+        "Default": "user/KiranSai",
         "Description": "Enter user/username or role/role_name",
         "Type": "String"
       },
       "S3Bucket": {
-        "Default": "scautoterminate-accountnum",
+        "Default": "scautoterminate-913524947693",
         "Description": "Bucket where the zips content are located",
         "Type": "String"
       },
