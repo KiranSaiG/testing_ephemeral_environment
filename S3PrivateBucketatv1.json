@@ -1,0 +1,153 @@
+{
+  "Description": "Storage,Bucket,v1.0,Create Public S3 Bucket beta-fdp-1p7mq4srk",
+  "Parameters": {
+    "ContactEmail": {
+      "Default": "email@emai.com",
+      "Description": "Email of owner",
+      "Type": "String"
+    },
+    "DurationDays": {
+      "Default": "0",
+      "AllowedValues": [
+        "0",
+        "2",
+        "7",
+        "30",
+        "60",
+        "90"
+      ],
+      "Description": "Duration Days",
+      "Type": "String"
+    },
+    "DurationHours": {
+      "Default": "0",
+      "AllowedValues": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "Description": "Duration Hours",
+      "Type": "String"
+    },
+    "DurationMinutes": {
+      "Default": "10",
+      "AllowedValues": [
+        "10",
+        "20",
+        "30",
+        "40",
+        "50",
+        "60"
+      ],
+      "Description": "Duration Minutes",
+      "Type": "String"
+    },
+    "AutoTerminate": {
+      "Default": "True",
+      "AllowedValues": [
+        "True",
+        "False"
+      ],
+      "Description": "Should the product Auto Terminate",
+      "Type": "String"
+    },
+    "Action": {
+      "Default": "Terminate",
+      "AllowedValues": [
+        "Terminate",
+        "Notify",
+        "Other"
+      ],
+      "Description": "What action should be taken at the end of the service",
+      "Type": "String"
+    },
+    "bucketName": {
+      "Description": "bucket name",
+      "Type": "String",
+      "Default": "scs3"
+    }
+
+  },
+  "Metadata": {
+    "AWS::CloudFormation::Interface": {
+      "ParameterGroups": [
+        {
+          "Label": {
+            "default": "Subscription End Information"
+          },
+          "Parameters": [
+            "AutoTerminate",
+            "DurationDays",
+            "DurationHours",
+            "DurationMinutes",
+            "Action",
+            "ContactEmail"
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "ThatBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "AccessControl": "Private",
+        "BucketName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "bucketName"
+              },
+              "",
+              {
+                "Fn::Select": [
+                 8,
+                  {
+                    "Fn::Split": [
+                      "-",
+                      {
+                        "Ref": "AWS::StackId"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        }
+
+      }
+    }
+  },
+  "Outputs": {
+    "Duration": {
+      "Description": "AutoTerminate setting",
+      "Value": {
+        "Fn::Sub": "This action [${Action}] will be taken in ${DurationDays} Days ${DurationHours} Hours ${DurationMinutes} Mintues"
+      }
+    },
+    "S3Url": {
+      "Description": "S3url",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            "https://s3.console.aws.amazon.com/s3/buckets/",
+            {
+              "Ref": "ThatBucket"
+            },
+            "?region=",
+            {
+              "Ref": "AWS::Region"
+            },
+            "&tab=overview"
+          ]
+        ]
+      }
+    }
+  }
+}

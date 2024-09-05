@@ -1,0 +1,560 @@
+{
+    "Description": "Lambda_Application",
+    "Parameters": {
+        "ContactEmail": {
+            "Default": "email@example.com",
+            "Description": "Email of owner",
+            "Type": "String"
+        },
+        "DurationDays": {
+            "Default": "0",
+            "AllowedValues": [
+                "0",
+                "2",
+                "7",
+                "30",
+                "60",
+                "90"
+            ],
+            "Description": "Duration Days",
+            "Type": "String"
+        },
+        "DurationHours": {
+            "Default": "0",
+            "AllowedValues": [
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5"
+            ],
+            "Description": "Duration Hours",
+            "Type": "String"
+        },
+        "DurationMinutes": {
+            "Default": "10",
+            "AllowedValues": [
+                "10",
+                "20",
+                "30",
+                "40",
+                "50",
+                "60"
+            ],
+            "Description": "Duration Minutes",
+            "Type": "String"
+        },
+        "AutoTerminate": {
+            "Default": "True",
+            "AllowedValues": [
+                "True",
+                "False"
+            ],
+            "Description": "Should the product Auto Terminate",
+            "Type": "String"
+        },
+        "Action": {
+            "Default": "Terminate",
+            "AllowedValues": [
+                "Terminate",
+                "Notify",
+                "Other"
+            ],
+            "Description": "What action should be taken at the end of the service",
+            "Type": "String"
+        },
+        "S3Bucket": {
+            "Default": "scautoterminate-accountnum",
+            "Description": "Bucket where the python code content are located",
+            "Type": "String"
+          },
+        "DynamoDBName":{
+            "Default":"Lambda_App_Db",
+            "Type":"String"
+        },
+        "LambdaNameApi":{
+            "Default":"Lambda_App",
+            "Type":"String"
+        },
+        "LambdaNamesqs":{
+            "Default":"Lambda_sqs",
+            "Type":"String"
+        }
+
+    },
+
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Subscription End Information"
+                    },
+                    "Parameters": [
+                        "AutoTerminate",
+                        "DurationDays",
+                        "DurationHours",
+                        "DurationMinutes",
+                        "Action",
+                        "ContactEmail"
+                    ]
+                }
+            ]
+        }
+    },
+    "Resources":{
+        "DynamodbSCautoterminate": {
+            "Type": "AWS::DynamoDB::Table",
+            "Properties": {
+              "AttributeDefinitions": [
+                {
+                  "AttributeName": "orderid",
+                  "AttributeType": "N"
+                }
+              ],
+              "KeySchema": [
+                {
+                  "AttributeName": "orderid",
+                  "KeyType": "HASH"
+                }
+              ],
+              "ProvisionedThroughput": {
+                "ReadCapacityUnits": "5",
+                "WriteCapacityUnits": "5"
+              },
+              "TableName": {
+                "Ref":"DynamoDBName"
+              }
+            }
+          },
+          "ApiGateway":{
+            "DependsOn":[
+              "LambdaApp"
+            ],
+            "Type" : "AWS::ApiGateway::RestApi",
+            "Properties" : {
+              "Name":"My_Rest_API"
+            }
+          },
+          "ApiGatewayResource":{
+            "DependsOn":[
+              "ApiGateway"
+            ],
+              "Type" : "AWS::ApiGateway::Resource",
+              "Properties" : {
+                "RestApiId": {
+                  "Ref": "ApiGateway"
+              },
+              "ParentId": {
+                  "Fn::GetAtt": [
+                      "ApiGateway",
+                      "RootResourceId"
+                  ]
+              },
+              "PathPart": "stack"
+              }
+          },
+          "APIDeployment": {
+            "DependsOn":[
+              "ApiGetMethod",
+              "ApiDeleteMethod",
+              "ApiPostMethod",
+              "ApiPutMethod"
+            ],
+            "Type": "AWS::ApiGateway::Deployment",
+            "Properties": {
+                "RestApiId": {
+                    "Ref": "ApiGateway"
+                }
+              }
+            },
+          "APIStage":{
+            "DependsOn":[
+              "APIDeployment"
+            ],
+            "Type": "AWS::ApiGateway::Stage",
+            "Properties": {
+                "StageName": "Prod",
+                "Description": "Prod Stage",
+                "RestApiId": {
+                    "Ref": "ApiGateway"
+                },
+                "DeploymentId": {
+                    "Ref": "APIDeployment"
+                }
+          }
+        },
+        "APIPermission":{
+          "DependsOn":[
+            "LambdaApp",
+            "ApiGateway"
+          ],
+          "Type": "AWS::Lambda::Permission",
+          "Properties": {
+            "FunctionName": {"Fn::GetAtt": ["LambdaApp","Arn"]},
+            "Action": "lambda:InvokeFunction",
+            "Principal": "apigateway.amazonaws.com",
+            "SourceAccount":{"Ref": "AWS::AccountId"},
+            "SourceArn": {"Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/stack"}
+          }
+        },
+          "ApiGetMethod":{
+            "DependsOn":[
+              "ApiGateway",
+              "ApiGatewayResource"
+            ],
+            "Type" : "AWS::ApiGateway::Method",
+            "Properties" : {
+                "RestApiId": {
+                    "Ref": "ApiGateway"
+                },
+                "ResourceId": {
+                    "Ref":"ApiGatewayResource"
+                },
+                "AuthorizationType":"NONE",
+                "HttpMethod": "GET",
+                "Integration":{
+                  "Type":"AWS_PROXY",
+                  "IntegrationHttpMethod":"POST",
+                  "Uri":{"Fn::Sub":"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${LambdaApp.Arn}/invocations"},
+                  "Credentials":{
+                    "Fn::GetAtt": [
+                      "LambdaappRole",
+                      "Arn"
+                    ]
+                  }
+
+                }
+            }
+          },
+          "ApiDeleteMethod":{
+            "DependsOn":[
+              "ApiGateway",
+              "ApiGatewayResource"
+            ],
+            "Type" : "AWS::ApiGateway::Method",
+            "Properties" : {
+              "RestApiId": {
+                "Ref": "ApiGateway"
+            },
+            "ResourceId": {
+                "Ref":"ApiGatewayResource"
+            },
+            "AuthorizationType":"NONE",
+            "HttpMethod": "DELETE",
+            "Integration":{
+              "Type":"AWS_PROXY",
+              "IntegrationHttpMethod":"POST",
+              "Uri":{"Fn::Sub":"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${LambdaApp.Arn}/invocations"},
+              "Credentials":{
+                "Fn::GetAtt": [
+                  "LambdaappRole",
+                  "Arn"
+                ]
+              }
+
+            }
+            }
+          },
+          "ApiPostMethod":{
+            "DependsOn":[
+              "ApiGateway",
+              "ApiGatewayResource"
+            ],
+            "Type" : "AWS::ApiGateway::Method",
+            "Properties" : {
+              "RestApiId": {
+                "Ref": "ApiGateway"
+            },
+            "ResourceId": {
+                "Ref":"ApiGatewayResource"
+            },
+            "HttpMethod": "POST",
+            "AuthorizationType":"NONE",
+            "Integration":{
+              "Type":"AWS_PROXY",
+              "IntegrationHttpMethod":"POST",
+              "Uri":{"Fn::Sub":"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${LambdaApp.Arn}/invocations"},
+              "Credentials":{
+                "Fn::GetAtt": [
+                  "LambdaappRole",
+                  "Arn"
+                ]
+              }
+
+            }
+            }
+          },
+          "ApiPutMethod":{
+            "DependsOn":[
+              "ApiGateway",
+              "ApiGatewayResource"
+            ],
+            "Type" : "AWS::ApiGateway::Method",
+            "Properties" : {
+              "RestApiId": {
+                "Ref": "ApiGateway"
+            },
+            "ResourceId": {
+                "Ref":"ApiGatewayResource"
+            },
+            "AuthorizationType":"NONE",
+            "HttpMethod": "PUT",
+            "Integration":{
+              "Type":"AWS_PROXY",
+              "IntegrationHttpMethod":"POST",
+              "Uri":{"Fn::Sub":"arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${LambdaApp.Arn}/invocations"},
+              "Credentials":{
+                "Fn::GetAtt": [
+                  "LambdaappRole",
+                  "Arn"
+                ]
+              }
+
+            }
+            }
+          },
+          "LambdaappRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "RoleName": "Lambda_app_Role",
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": [
+                        "lambda.amazonaws.com",
+                        "apigateway.amazonaws.com"
+                      ]
+                    },
+                    "Action": [
+                      "sts:AssumeRole"
+                    ]
+                  }
+                ]
+              },
+              "Path": "/"
+            }
+          },
+          "PolicylamdbaExecution": {
+            "DependsOn": [
+              "LambdaappRole"
+            ],
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+              "PolicyName": "Policylamdba_APP_Execution",
+              "Roles": [
+                {
+                  "Ref": "LambdaappRole"
+                }
+              ],
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "lambda:InvokeFunction"
+                    ],
+                    "Resource": {
+                      "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+                    }
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "cloudformation:*"
+                    ],
+                    "Resource": {
+                      "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/SC-*"
+                    }
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "s3:*",
+                      "ec2:*",
+                      "sns:*",
+                      "sqs:*",
+                      "lambda:*",
+                      "apigateway:*"
+                    ],
+                    "Resource": "*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "logs:CreateLogGroup",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource": "*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "dynamodb:GetItem",
+                      "dynamodb:CreateTable",
+                      "dynamodb:DeleteItem",
+                      "dynamodb:DescribeTable",
+                      "dynamodb:ListTables",
+                      "dynamodb:PutItem",
+                      "dynamodb:Query",
+                      "dynamodb:Scan",
+                      "dynamodb:UpdateItem",
+                      "dynamodb:UpdateTable"
+                    ],
+                    "Resource": "*"
+                    }
+                ]
+              }
+            }
+          },
+
+          "SQSQUEUE":{
+            "Type" : "AWS::SQS::Queue",
+            "Properties" : {
+            "QueueName" : "SampleQueue.fifo",
+            "FifoQueue":"true",
+            "ContentBasedDeduplication":"true"
+            }
+          },
+
+
+          "LambdaApp": {
+            "DependsOn": [
+              "DynamodbSCautoterminate",
+              "LambdaappRole",
+              "SQSQUEUE"
+            ],
+            "Properties": {
+              "Code": {
+                "S3Bucket": {
+                  "Ref": "S3Bucket"
+                },
+                "S3Key": {
+                  "Fn::Sub": "python_code.zip"
+                }
+              },
+              "FunctionName": {
+                "Ref":"LambdaNameApi"
+              },
+              "Environment":{
+                "Variables":{
+                    "SQS_QUEUE_URL":{"Ref":"SQSQUEUE"},
+                    "DYNAMODB_TABLE":{"Ref":"DynamodbSCautoterminate"}
+                }
+              },
+              "Handler": "python_code.lambda_handler",
+              "MemorySize": 128,
+              "Role": {
+                "Fn::GetAtt": [
+                  "LambdaappRole",
+                  "Arn"
+                ]
+              },
+              "Runtime": "python3.8",
+              "Timeout": 3
+            },
+            "Type": "AWS::Lambda::Function"
+          },
+
+          "LambdaSQS": {
+            "DependsOn": [
+              "DynamodbSCautoterminate",
+              "LambdaappRole",
+              "SQSQUEUE"
+            ],
+            "Properties": {
+              "Code": {
+                "S3Bucket": {
+                  "Ref": "S3Bucket"
+                },
+                "S3Key": {
+                  "Fn::Sub": "python_code_sqs.zip"
+                }
+              },
+              "FunctionName": {
+                "Ref":"LambdaNamesqs"
+              },
+              "Environment":{
+                "Variables":{
+                    "SQS_QUEUE_URL":{"Ref":"SQSQUEUE"},
+                    "DYNAMODB_TABLE":{"Ref":"DynamodbSCautoterminate"}
+                }
+              },
+              "Handler": "python_code_sqs.lambda_handler",
+              "MemorySize": 128,
+              "Role": {
+                "Fn::GetAtt": [
+                  "LambdaappRole",
+                  "Arn"
+                ]
+              },
+              "Runtime": "python3.8",
+              "Timeout": 3
+            },
+            "Type": "AWS::Lambda::Function"
+          },
+          "PermissionForEventsToInvokeLambdasqs": {
+            "DependsOn":[
+                "LambdaSQS"
+            ],
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+              "FunctionName": {
+                "Ref":"LambdaNamesqs"
+              },
+              "Action": "lambda:InvokeFunction",
+              "Principal": "events.amazonaws.com",
+              "SourceArn": {
+                "Fn::GetAtt": [
+                  "SQSQUEUE",
+                  "Arn"
+                ]
+              }
+            }
+          },
+          "EventSourceMapping": {
+            "DependsOn":[
+                "SQSQUEUE",
+                "LambdaSQS"
+            ],
+            "Type": "AWS::Lambda::EventSourceMapping",
+            "Properties": {
+                "EventSourceArn": {
+                    "Fn::GetAtt":["SQSQUEUE","Arn"]
+                },
+                "FunctionName": {
+                    "Fn::GetAtt": [
+                        "LambdaSQS",
+                        "Arn"
+                    ]
+                }
+            }
+        },
+          "LambdaURL":{
+            "Type" : "AWS::Lambda::Url",
+            "Properties" : {
+                "AuthType":"NONE",
+                "TargetFunctionArn":{"Fn::GetAtt":["LambdaApp","Arn"]}
+          }
+        }
+
+
+    },
+    "Outputs":{
+        "LambdaURL":
+        {
+           "Value": {"Fn::GetAtt":["LambdaURL","FunctionUrl"]}
+            },
+            "ApiURL":{
+              "Value":{
+                "Fn::Sub":"https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${APIStage}/stack"
+              }
+            }
+    }
+}

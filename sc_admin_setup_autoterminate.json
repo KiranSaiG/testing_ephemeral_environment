@@ -1,0 +1,463 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Service Catalog AutoTerminate Setup",
+  "Parameters": {
+    "SCenduser": {
+      "Default": "user/user",
+      "Description": "Enter user/username or role/role_name",
+      "Type": "String"
+    },
+    "S3Bucket": {
+      "Default": "scautoterminate-accountnum",
+      "Description": "Bucket where the zips content are located",
+      "Type": "String"
+    },
+    "CheckFrequency": {
+      "Default": "rate(20 minutes)",
+      "Description": "What is the Frequency to check for expired SC Products",
+      "Type": "String",
+      "AllowedValues": [
+        "rate(10 minutes)",
+        "rate(20 minutes)",
+        "rate(30 minutes)"
+      ]
+    }
+  },
+  "Resources": {
+    "DynamodbSCautoterminate": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "ProvisionedProductId",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "ProvisionedProductId",
+            "KeyType": "HASH"
+          }
+        ],
+        "ProvisionedThroughput": {
+          "ReadCapacityUnits": "5",
+          "WriteCapacityUnits": "5"
+        },
+        "TableName": {
+          "Fn::Sub": "sc-autoterminate-${AWS::AccountId}"
+        }
+      }
+    },
+    "RoleAutoTerminate": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "RoleAutoTerminate",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/"
+      }
+    },
+    "PolicylamdbaExecution": {
+      "DependsOn": [
+        "RoleAutoTerminate"
+      ],
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "PolicylamdbaExecution",
+        "Roles": [
+          {
+            "Ref": "RoleAutoTerminate"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "lambda:InvokeFunction"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "cloudformation:DescribeStacks",
+                "cloudformation:DescribeStackResource",
+                "cloudformation:DeleteStack",
+                "cloudformation:DeleteStackInstances",
+                "cloudformation:DeleteStackSet"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/SC-*"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:Delete*",
+                "ec2:Delete*"
+              ],
+              "Resource": "*"
+            },
+
+            {
+              "Effect": "Allow",
+              "Action": [
+                "servicecatalog:AcceptPortfolioShare",
+                "servicecatalog:AssociatePrincipalWithPortfolio",
+                "servicecatalog:AssociateProductWithPortfolio",
+                "servicecatalog:DescribePortfolio",
+                "servicecatalog:DescribeProductView",
+                "servicecatalog:DescribeProvisionedProduct",
+                "servicecatalog:DescribeProvisionedProductPlan",
+                "servicecatalog:DescribeProvisioningArtifact",
+                "servicecatalog:DescribeProvisioningParameters",
+                "servicecatalog:DescribeProduct",
+                "servicecatalog:DescribeProductAsAdmin",
+                "servicecatalog:DescribeProvisionedProduct",
+                "servicecatalog:DescribeProvisioningArtifact",
+                "servicecatalog:DisassociateProductFromPortfolio",
+                "servicecatalog:SearchProducts",
+                "servicecatalog:SearchProductsAsAdmin",
+                "servicecatalog:SearchProvisionedProducts",
+                "servicecatalog:TerminateProvisionedProduct"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:CreateTable",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+                "dynamodb:ListTables",
+                "dynamodb:PutItem",
+                "dynamodb:Query",
+                "dynamodb:Scan",
+                "dynamodb:UpdateItem",
+                "dynamodb:UpdateTable"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sc-autoterminate-${AWS::AccountId}"
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ses:ListVerifiedEmailAddresses",
+                "ses:SendEmail",
+                "ses:VerifyEmailIdentity",
+                "ses:ListTemplates"
+              ],
+              "Resource": {
+                "Fn::Sub": "*"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Lamdbaautoterminate": {
+      "DependsOn": [
+        "RoleAutoTerminate"
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Ref": "S3Bucket"
+          },
+          "S3Key": {
+            "Fn::Sub": "lscautoterminate.zip"
+          }
+        },
+        "FunctionName": {
+          "Fn::Join": [
+            "",
+            [
+              "lscautoterminate",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "-",
+                      {
+                        "Fn::Select": [
+                          2,
+                          {
+                            "Fn::Split": [
+                              "/",
+                              {
+                                "Ref": "AWS::StackId"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        },
+        "Handler": "lambda_function.lambda_handler",
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "RoleAutoTerminate",
+            "Arn"
+          ]
+        },
+        "Runtime": "python3.8",
+        "Timeout": 3
+      },
+      "Type": "AWS::Lambda::Function"
+    },
+    "PermissionForEventsToInvokeLambdachk": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Join": [
+            "",
+            [
+              "lscautoterminate",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "-",
+                      {
+                        "Fn::Select": [
+                          2,
+                          {
+                            "Fn::Split": [
+                              "/",
+                              {
+                                "Ref": "AWS::StackId"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "RuleSCAutoterminate",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "RuleSCAutoterminate": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "SC Autoterminate Check when SC product are deployed",
+        "Name": "CheckSCAutoterminate",
+        "EventPattern": {
+          "source": [
+            "aws.servicecatalog"
+          ],
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "eventSource": [
+              "servicecatalog.amazonaws.com"
+            ],
+            "eventName": [
+              "TerminateProvisionedProduct",
+              "ProvisionProduct"
+            ]
+          }
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "Lamdbaautoterminate",
+                "Arn"
+              ]
+            },
+            "Id": "IDlscautoterminate"
+          }
+        ]
+      }
+    },
+    "ScheduledRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "ScheduledRule",
+        "Name": "ChkAutoterminateScheduledRule",
+        "ScheduleExpression": {
+          "Ref": "CheckFrequency"
+        },
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "Lamdbaautoterminate",
+                "Arn"
+              ]
+            },
+            "Id": "TargetFunctionV1"
+          }
+        ]
+      }
+    },
+    "PermissionForEventsToInvokeLambda": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Join": [
+            "",
+            [
+              "lscautoterminate",
+              {
+                "Fn::Select": [
+                  1,
+                  {
+                    "Fn::Split": [
+                      "-",
+                      {
+                        "Fn::Select": [
+                          2,
+                          {
+                            "Fn::Split": [
+                              "/",
+                              {
+                                "Ref": "AWS::StackId"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "ScheduledRule",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "ProdAssBucket": {
+      "Type": "AWS::ServiceCatalog::PortfolioProductAssociation",
+      "DependsOn": [
+        "Protfolio",
+        "SCProductBucket"
+      ],
+      "Properties": {
+        "AcceptLanguage": "en",
+        "PortfolioId": {
+          "Ref": "Protfolio"
+        },
+        "ProductId": {
+          "Ref": "SCProductBucket"
+        }
+      }
+    },
+    "SCProductBucket": {
+      "Type": "AWS::ServiceCatalog::CloudFormationProduct",
+      "Properties": {
+        "Owner": "Ephemeral Team",
+        "SupportDescription": "Support Description",
+        "Description": "BucketAutoTerminate",
+        "Distributor": "AWS Ephemeral Team",
+        "SupportEmail": "ephemeral@example.com",
+        "AcceptLanguage": "en",
+        "SupportUrl": "https://support.com",
+        "Name": "BucketAutoTerminate",
+        "ProvisioningArtifactParameters": [
+          {
+            "Description": "v1.0",
+            "Info": {
+              "LoadTemplateFromURL": {
+                "Fn::Sub": "https://s3.amazonaws.com/scautoterminate-${AWS::AccountId}/S3PrivateBucketatv1.json"
+              }
+            },
+            "Name": "v1.0"
+          }
+        ]
+      }
+    },
+    "Principal": {
+      "Type": "AWS::ServiceCatalog::PortfolioPrincipalAssociation",
+      "Properties": {
+        "PrincipalARN": {
+          "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:${SCenduser}"
+        },
+        "AcceptLanguage": "en",
+        "PortfolioId": {
+          "Ref": "Protfolio"
+        },
+        "PrincipalType": "IAM"
+      }
+    },
+    "Protfolio": {
+      "Type": "AWS::ServiceCatalog::Portfolio",
+      "Properties": {
+        "ProviderName": "AWS MP",
+        "Description": "AWS MP Sample Portfolio",
+        "DisplayName": "AutoTerminatePortfolio",
+        "AcceptLanguage": "en"
+      }
+    }
+  },
+  "Outputs": {
+    "ServiceCatalog": {
+      "Description": "Service Catalog Console",
+      "Value": {
+        "Fn::Sub": "https://console.aws.amazon.com/servicecatalog/home?region=${AWS::Region}#/products"
+      }
+    }
+  }
+}
