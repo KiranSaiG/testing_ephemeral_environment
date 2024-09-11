@@ -380,7 +380,8 @@
                       "sns:*",
                       "sqs:*",
                       "lambda:*",
-                      "apigateway:*"
+                      "apigateway:*",
+                      "iam:*"
                     ],
                     "Resource": "*"
                   },
