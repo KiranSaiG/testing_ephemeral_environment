@@ -1,5 +1,5 @@
 {
-    "Description": "Lambda_Application",
+    "Description": "Lambda _ Application",
     "Parameters": {
         "ContactEmail": {
             "Default": "email@example.com",
