@@ -65,7 +65,7 @@
             "Type": "String"
         },
         "S3Bucket": {
-            "Default": "scautoterminate-accountnum",
+            "Default": "scautoterminate-913524947693",
             "Description": "Bucket where the python code content are located",
             "Type": "String"
           },
