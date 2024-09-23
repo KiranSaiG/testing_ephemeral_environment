@@ -115,6 +115,7 @@
                   "ec2:*",
                   "sns:*",
                   "sqs:*",
+                  "apigateway:*",
                   "lambda:*",
                   "dynamodb:*",
                   "iam:DeleteRolePolicy",
